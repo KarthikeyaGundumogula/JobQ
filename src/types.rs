@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub struct PostJob {
     pub job_type: String,
     pub payload: Value,
+    pub max_attemps: u32,
 }
 
 #[derive(Serialize, Clone)]
@@ -16,9 +17,17 @@ pub struct Job {
     pub payload: serde_json::Value,
     pub state: JobState,
     pub attempts: u32,
+    pub max_attemps: u32,
+    pub run_at: i64,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(PartialEq, PartialOrd, Eq, Ord)]
+pub struct Index {
+    pub run_at: i64,
+    pub uuid: Uuid,
+}
+
+#[derive(Serialize, Clone, PartialEq)]
 pub enum JobState {
     Queued,
     Running,

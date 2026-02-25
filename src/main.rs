@@ -1,28 +1,40 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
-mod types;
-use types::{ApiError, ApiResponse, Job, JobState};
-
 use axum::{
     Json, Router,
     extract::{Path, State},
     routing::{get, post},
 };
+use chrono::Utc;
+use std::{
+    collections::{BinaryHeap, HashMap},
+    str::FromStr,
+    sync::Arc,
+};
 use tokio::sync::Mutex;
 use uuid::{self, Uuid};
 
-use crate::types::PostJob;
+mod state;
+mod types;
+mod worker;
 
-pub struct AppState {
-    jobs: HashMap<Uuid, Job>,
-}
+use state::AppState;
+use types::{ApiError, ApiResponse, Job, JobState, PostJob};
+
+use crate::types::Index;
 
 #[tokio::main]
 async fn main() {
     let app_state = Arc::new(Mutex::new(AppState {
         jobs: HashMap::new(),
+        index: BinaryHeap::new(),
     }));
 
+    for _ in 0..2 {
+        let state = app_state.clone();
+        tokio::spawn(async move { worker::worker_loop(state).await });
+    }
+
     let app = Router::new()
+        .route("/", get(health_check))
         .route("/get/{job_id}", get(get_jobs))
         .route("/post", post(post_job))
         .with_state(app_state);
@@ -33,6 +45,10 @@ async fn main() {
         listner.local_addr().unwrap()
     );
     axum::serve(listner, app).await.unwrap();
+}
+
+async fn health_check() -> ApiResponse {
+    ApiResponse::OK
 }
 
 async fn get_jobs(
@@ -61,6 +77,7 @@ async fn post_job(
 ) -> ApiResponse {
     let id = Uuid::new_v4();
     {
+        let current_time = Utc::now().timestamp();
         let mut app_state = app.lock().await;
         app_state.jobs.insert(
             id,
@@ -70,8 +87,15 @@ async fn post_job(
                 payload: data.payload,
                 state: JobState::Queued,
                 attempts: 0,
+                max_attemps: data.max_attemps,
+                run_at: current_time,
             },
         );
+
+        app_state.index.push(Index {
+            run_at: current_time,
+            uuid: id,
+        });
     }
     ApiResponse::Created(id.to_string())
 }
