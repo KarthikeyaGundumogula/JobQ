@@ -5,6 +5,7 @@ use axum::{
 };
 use chrono::Utc;
 use std::{
+    cmp::Reverse,
     collections::{BinaryHeap, HashMap},
     str::FromStr,
     sync::Arc,
@@ -92,10 +93,10 @@ async fn post_job(
             },
         );
 
-        app_state.index.push(Index {
+        app_state.index.push(Reverse(Index {
             run_at: current_time,
             uuid: id,
-        });
+        }));
     }
     ApiResponse::Created(id.to_string())
 }
