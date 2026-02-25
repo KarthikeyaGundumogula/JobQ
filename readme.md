@@ -37,24 +37,14 @@ These concerns are often reimplemented ad hoc, leading to:
 
 ---
 
-## Non-Goals
-
-- This is **not** a distributed message broker (Kafka, Pulsar)
-- This is **not** a blockchain node or validator
-- This is **not** lock-free at all costs
-
-Correctness and clarity take priority over premature optimization.
+**Correctness and clarity take priority over premature optimization.**
 
 ---
 
 ## High-Level Architecture
 
 ```
-jobq/
-├── jobq-core/      # Core async execution runtime (library crate)
-├── jobq-server/    # Optional HTTP / gRPC wrapper (future)
-├── jobq-solana/    # Optional Solana / Yellowstone adapter (future)
-└── jobq-cli/       # Optional CLI tooling (future)
++------------------+       +------------------+       +------------------+
 ```
 
 ## 📋 Phase 1 — Execution Tracker
@@ -67,23 +57,5 @@ jobq/
 - [ ] Unit test: job submission
 - [ ] Unit test: concurrent job processing
 - [ ] Unit test: graceful shutdown
-
-#### Documentation
-
-- [ ] Rustdoc for public APIs
-- [ ] Phase 1 README documentation
-
----
-
-### ✅ Definition of Done (Phase 1)
-
-Phase 1 is considered complete when:
-
-- [ ] `cargo test` passes
-- [ ] Jobs are processed concurrently
-- [ ] Backpressure behaves correctly
-- [ ] Workers shut down gracefully
-- [ ] Public API is clean and documented
-- [ ] README accurately reflects current state
 
 ---
