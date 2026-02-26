@@ -13,6 +13,7 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::{self, Uuid};
 
+mod constants;
 mod state;
 mod types;
 mod worker;
@@ -20,7 +21,7 @@ mod worker;
 use state::AppState;
 use types::{ApiError, ApiResponse, Job, JobState, PostJob};
 
-use crate::types::Index;
+use crate::{constants::MAX_ATTEMPTS, types::Index};
 
 #[tokio::main]
 async fn main() {
@@ -75,10 +76,14 @@ async fn get_jobs(
 async fn post_job(
     State(app): State<Arc<Mutex<AppState>>>,
     Json(data): Json<PostJob>,
-) -> ApiResponse {
+) -> Result<ApiResponse, ApiError> {
     let id = Uuid::new_v4();
-    {
-        let current_time = Utc::now().timestamp();
+
+    let current_time = Utc::now().timestamp();
+
+    if data.max_attempts > MAX_ATTEMPTS {
+        Err(ApiError::Failed)
+    } else {
         let mut app_state = app.lock().await;
         app_state.jobs.insert(
             id,
@@ -88,7 +93,7 @@ async fn post_job(
                 payload: data.payload,
                 state: JobState::Queued,
                 attempts: 0,
-                max_attemps: data.max_attemps,
+                max_attemps: data.max_attempts,
                 run_at: current_time,
             },
         );
@@ -97,6 +102,6 @@ async fn post_job(
             run_at: current_time,
             uuid: id,
         }));
+        Ok(ApiResponse::Created(id.to_string()))
     }
-    ApiResponse::Created(id.to_string())
 }

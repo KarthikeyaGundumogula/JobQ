@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub struct PostJob {
     pub job_type: String,
     pub payload: Value,
-    pub max_attemps: u32,
+    pub max_attempts: u32,
 }
 
 #[derive(Serialize, Clone)]

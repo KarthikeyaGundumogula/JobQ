@@ -1,9 +1,18 @@
 use chrono::{self, Utc};
-use std::{cmp::Reverse, sync::Arc, time::Duration};
+use rand;
+use std::{
+    cmp::{Reverse, min},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{sync::Mutex, time::sleep};
 use uuid::Uuid;
 
-use crate::{state::AppState, types::JobState};
+use crate::{
+    constants::{BASE_DELAY, MAX_DELAY},
+    state::AppState,
+    types::JobState,
+};
 
 pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
     loop {
@@ -60,8 +69,12 @@ pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
                     // this mean the simulation is failed
                     if job.attempts < job.max_attemps {
                         job.state = JobState::Queued;
-                        // Increment the run at constrait so that it wont run repeatedly
-                        job.run_at = Utc::now().timestamp() + 60;
+                        // add a exponential delay so that it wont run repeatedly
+                        // add random jitter also to solve THUNDERING HERD PROBLEM
+                        let jitter: i64 = rand::random_range(0..10);
+                        let delay = BASE_DELAY * 2i64.pow(job.attempts) + jitter;
+                        let delay = min(delay, MAX_DELAY);
+                        job.run_at = now + delay;
                         let run = job.run_at;
                         let uuid = job.job_id;
                         app.index.push(Reverse(crate::types::Index {
