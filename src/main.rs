@@ -14,12 +14,14 @@ use tokio::sync::Mutex;
 use uuid::{self, Uuid};
 
 mod constants;
+mod errors;
 mod state;
 mod types;
 mod worker;
 
+use errors::ApiError;
 use state::AppState;
-use types::{ApiError, ApiResponse, Job, JobState, PostJob};
+use types::{ApiResponse, Job, JobState, PostJob};
 
 use crate::{constants::MAX_ATTEMPTS, types::Index};
 
@@ -41,7 +43,9 @@ async fn main() {
         .route("/post", post(post_job))
         .with_state(app_state);
 
-    let listner = tokio::net::TcpListener::bind("0.0.0.0:8484").await.unwrap();
+    let listner = tokio::net::TcpListener::bind("127.0.0.1:8484")
+        .await
+        .unwrap();
     println!(
         "Server started successfully at {}",
         listner.local_addr().unwrap()
@@ -57,10 +61,7 @@ async fn get_jobs(
     Path(job_id): Path<String>,
     State(app): State<Arc<Mutex<AppState>>>,
 ) -> Result<ApiResponse, ApiError> {
-    let id = match Uuid::from_str(&job_id) {
-        Ok(id) => id,
-        Err(_) => return Err(ApiError::Failed),
-    };
+    let id = Uuid::from_str(&job_id)?;
 
     let job = {
         let state = app.lock().await;
@@ -82,7 +83,7 @@ async fn post_job(
     let current_time = Utc::now().timestamp();
 
     if data.max_attempts > MAX_ATTEMPTS {
-        Err(ApiError::Failed)
+        Err(ApiError::InvalidArgument)
     } else {
         let mut app_state = app.lock().await;
         app_state.jobs.insert(
@@ -93,7 +94,7 @@ async fn post_job(
                 payload: data.payload,
                 state: JobState::Queued,
                 attempts: 0,
-                max_attemps: data.max_attempts,
+                max_attempts: data.max_attempts,
                 run_at: current_time,
             },
         );

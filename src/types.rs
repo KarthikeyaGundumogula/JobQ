@@ -17,7 +17,7 @@ pub struct Job {
     pub payload: serde_json::Value,
     pub state: JobState,
     pub attempts: u32,
-    pub max_attemps: u32,
+    pub max_attempts: u32,
     pub run_at: i64,
 }
 
@@ -32,9 +32,9 @@ pub enum JobState {
     Queued,
     Running,
     Succeeded,
-    Failed,
+    // Failed,
     Dead,
-    Cancelled,
+    // Cancelled,
 }
 
 pub enum ApiResponse {
@@ -43,10 +43,6 @@ pub enum ApiResponse {
     JobData(Job),
 }
 
-pub enum ApiError {
-    Failed,
-    NotFound,
-}
 
 impl IntoResponse for ApiResponse {
     fn into_response(self) -> axum::response::Response {
@@ -58,11 +54,3 @@ impl IntoResponse for ApiResponse {
     }
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        match self {
-            Self::Failed => (StatusCode::BAD_REQUEST).into_response(),
-            Self::NotFound => (StatusCode::NOT_FOUND).into_response(),
-        }
-    }
-}

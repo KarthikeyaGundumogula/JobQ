@@ -1,5 +1,4 @@
 use chrono::{self, Utc};
-use rand;
 use std::{
     cmp::{Reverse, min},
     sync::Arc,
@@ -31,19 +30,17 @@ pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
                         app.index.pop();
                         drop(app);
                         Some(uuid)
+                    } else if job.run_at != run_at {
+                        app.index.pop();
+                        drop(app);
+                        None
                     } else {
-                        if job.run_at != run_at {
-                            app.index.pop();
-                            drop(app);
-                            None
-                        } else {
-                            let run_at = job.run_at;
-                            drop(app);
-                            if run_at > now {
-                                sleep(Duration::from_secs((run_at - now) as u64)).await;
-                            }
-                            None
+                        let run_at = job.run_at;
+                        drop(app);
+                        if run_at > now {
+                            sleep(Duration::from_secs((run_at - now) as u64)).await;
                         }
+                        None
                     }
                 } else {
                     app.index.pop();
@@ -65,9 +62,10 @@ pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
             if let Some(job) = app.jobs.get_mut(&id) {
                 let choice: u8 = rand::random();
                 // Randomly change the job state
-                if choice % 2 == 0 {
+                if choice.is_multiple_of(2) {
+                    println!("job witrh jobId: {} failed ", job.job_id);
                     // this mean the simulation is failed
-                    if job.attempts < job.max_attemps {
+                    if job.attempts < job.max_attempts {
                         job.state = JobState::Queued;
                         // add a exponential delay so that it wont run repeatedly
                         // add random jitter also to solve THUNDERING HERD PROBLEM
@@ -77,14 +75,13 @@ pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
                         job.run_at = now + delay;
                         let run = job.run_at;
                         let uuid = job.job_id;
-                        app.index.push(Reverse(crate::types::Index {
-                            run_at: run,
-                            uuid: uuid,
-                        }));
+                        app.index
+                            .push(Reverse(crate::types::Index { run_at: run, uuid }));
                     } else {
                         job.state = JobState::Dead;
                     }
                 } else {
+                    println!("job witrh jobId: {} succeeded", job.job_id);
                     job.state = JobState::Succeeded
                 }
             }
