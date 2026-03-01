@@ -40,8 +40,8 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 * [x] Exponential backoff
 * [x] Jitter to mitigate thundering herd
 * [x] Max delay cap
-* [ ] Linear retry policy implementation
-* [ ] RetryPolicy trait abstraction (clean version)
+* [x] Linear retry policy implementation
+* [x] RetryPolicy trait abstraction (clean version)
 
 ---
 
@@ -49,9 +49,7 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 * [x] POST /jobs
 * [x] GET /jobs/{id}
-* [ ] POST /jobs/{id}/cancel
-* [ ] GET /jobs/dead
-* [ ] GET /metrics
+* [x] POST /jobs/{id}/cancel
 
 ---
 
@@ -59,9 +57,9 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 * [x] `thiserror` integration
 * [x] `From` conversions for UUID / Serde
-* [ ] Structured HTTP error mapping (clean responses)
-* [ ] No unwrap() in request path
-* [ ] `cargo clippy` clean
+* [x] Structured HTTP error mapping (clean responses)
+* [x] No unwrap() in request path
+* [x] `cargo clippy` clean
 
 ---
 

@@ -1,17 +1,9 @@
 use chrono::{self, Utc};
-use std::{
-    cmp::{Reverse, min},
-    sync::Arc,
-    time::Duration,
-};
+use std::{cmp::Reverse, sync::Arc, time::Duration};
 use tokio::{sync::Mutex, time::sleep};
 use uuid::Uuid;
 
-use crate::{
-    constants::{BASE_DELAY, MAX_DELAY},
-    state::AppState,
-    types::JobState,
-};
+use crate::{state::AppState, types::JobState};
 
 pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
     loop {
@@ -58,6 +50,7 @@ pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
             sleep(Duration::from_secs(2)).await;
 
             // acquire lock
+            let now = Utc::now().timestamp();
             let mut app = state.lock().await;
             if let Some(job) = app.jobs.get_mut(&id) {
                 let choice: u8 = rand::random();
@@ -69,9 +62,7 @@ pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
                         job.state = JobState::Queued;
                         // add a exponential delay so that it wont run repeatedly
                         // add random jitter also to solve THUNDERING HERD PROBLEM
-                        let jitter: i64 = rand::random_range(0..10);
-                        let delay = BASE_DELAY * 2i64.pow(job.attempts) + jitter;
-                        let delay = min(delay, MAX_DELAY);
+                        let delay = job.retry_policy.next_delay(job.attempts);
                         job.run_at = now + delay;
                         let run = job.run_at;
                         let uuid = job.job_id;

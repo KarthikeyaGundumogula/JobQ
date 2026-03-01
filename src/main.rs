@@ -15,6 +15,7 @@ use uuid::{self, Uuid};
 
 mod constants;
 mod errors;
+mod retry;
 mod state;
 mod types;
 mod worker;
@@ -41,6 +42,7 @@ async fn main() {
         .route("/", get(health_check))
         .route("/get/{job_id}", get(get_jobs))
         .route("/post", post(post_job))
+        .route("/cancel/{job_id}", post(cancel_job))
         .with_state(app_state);
 
     let listner = tokio::net::TcpListener::bind("127.0.0.1:8484")
@@ -96,6 +98,7 @@ async fn post_job(
                 attempts: 0,
                 max_attempts: data.max_attempts,
                 run_at: current_time,
+                retry_policy: data.retry_policy,
             },
         );
 
@@ -104,5 +107,26 @@ async fn post_job(
             uuid: id,
         }));
         Ok(ApiResponse::Created(id.to_string()))
+    }
+}
+
+async fn cancel_job(
+    Path(job_id): Path<String>,
+    State(app): State<Arc<Mutex<AppState>>>,
+) -> Result<ApiResponse, ApiError> {
+    let id = Uuid::from_str(&job_id)?;
+    let mut app_state = app.lock().await;
+    let job = app_state.jobs.get_mut(&id);
+    match job {
+        Some(job) => match job.state {
+            JobState::Queued => {
+                job.state = JobState::Cancelled;
+                Ok(ApiResponse::JobData(job.clone()))
+            }
+            _ => Err(ApiError::Conflict {
+                reason: job.state.clone(),
+            }),
+        },
+        _ => Err(ApiError::NotFound),
     }
 }

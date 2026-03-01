@@ -2,6 +2,8 @@ use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::types::JobState;
+
 #[derive(Serialize)]
 pub struct ErrorResponse {
     error: String,
@@ -27,28 +29,31 @@ pub enum ApiError {
     NotFound,
     #[error("Invalid Argument (max_attempts)")]
     InvalidArgument,
+    #[error("job can't be cancelled at the current state: {reason}")]
+    Conflict { reason: JobState },
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
+        let message = self.to_string();
         match self {
             // Self::Failed => (
             //     StatusCode::INTERNAL_SERVER_ERROR,
             //     Json(ErrorResponse::new(
-            //         self.to_string(),
+            //         message,
             //         StatusCode::INTERNAL_SERVER_ERROR,
             //     )),
             // )
             //     .into_response(),
             Self::NotFound => (
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new(self.to_string(), StatusCode::NOT_FOUND)),
+                Json(ErrorResponse::new(message, StatusCode::NOT_FOUND)),
             )
                 .into_response(),
             Self::InvalidArgument => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 Json(ErrorResponse::new(
-                    self.to_string(),
+                    message,
                     StatusCode::UNPROCESSABLE_ENTITY,
                 )),
             )
@@ -56,6 +61,11 @@ impl IntoResponse for ApiError {
             Self::Uuid(err) => (
                 StatusCode::BAD_REQUEST,
                 Json(ErrorResponse::new(err.to_string(), StatusCode::BAD_REQUEST)),
+            )
+                .into_response(),
+            Self::Conflict { reason: _ } => (
+                StatusCode::CONFLICT,
+                Json(ErrorResponse::new(message, StatusCode::CONFLICT)),
             )
                 .into_response(),
         }

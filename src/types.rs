@@ -3,11 +3,38 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::retry::{ExponentialBackoff, LinearBackoff, RetryPolicy};
+
+#[derive(Deserialize, Clone, Serialize)]
+#[serde(tag = "type")]
+pub enum RetryPolicyConfig {
+    Exponential { base: i64, max_delay: i64 },
+    Linear { step: i64, max_delay: i64 },
+}
+
+impl RetryPolicyConfig {
+    pub fn next_delay(&self, attempts: u32) -> i64 {
+        match self {
+            Self::Exponential { base, max_delay } => ExponentialBackoff {
+                base: *base,
+                max_delay: *max_delay,
+            }
+            .next_delay(attempts),
+            Self::Linear { step, max_delay } => LinearBackoff {
+                step: *step,
+                max_delay: *max_delay,
+            }
+            .next_delay(attempts),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct PostJob {
     pub job_type: String,
     pub payload: Value,
     pub max_attempts: u32,
+    pub retry_policy: RetryPolicyConfig,
 }
 
 #[derive(Serialize, Clone)]
@@ -19,6 +46,7 @@ pub struct Job {
     pub attempts: u32,
     pub max_attempts: u32,
     pub run_at: i64,
+    pub retry_policy: RetryPolicyConfig,
 }
 
 #[derive(PartialEq, PartialOrd, Eq, Ord)]
@@ -27,14 +55,27 @@ pub struct Index {
     pub uuid: Uuid,
 }
 
-#[derive(Serialize, Clone, PartialEq)]
+#[derive(Serialize, Clone, PartialEq, Debug)]
 pub enum JobState {
     Queued,
     Running,
     Succeeded,
     // Failed,
     Dead,
-    // Cancelled,
+    Cancelled,
+}
+
+impl std::fmt::Display for JobState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            JobState::Queued => write!(f, "Queued"),
+            JobState::Running => write!(f, "Running"),
+            JobState::Succeeded => write!(f, "Succeeded"),
+            // JobState::Failed => write!(f, "Failed"),
+            JobState::Dead => write!(f, "Dead"),
+            JobState::Cancelled => write!(f, "Cancelled"),
+        }
+    }
 }
 
 pub enum ApiResponse {
@@ -42,7 +83,6 @@ pub enum ApiResponse {
     Created(String),
     JobData(Job),
 }
-
 
 impl IntoResponse for ApiResponse {
     fn into_response(self) -> axum::response::Response {
@@ -53,4 +93,3 @@ impl IntoResponse for ApiResponse {
         }
     }
 }
-
