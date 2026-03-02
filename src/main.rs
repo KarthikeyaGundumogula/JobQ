@@ -10,7 +10,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use uuid::{self, Uuid};
 
 mod constants;
@@ -28,10 +28,11 @@ use crate::{constants::MAX_ATTEMPTS, types::Index};
 
 #[tokio::main]
 async fn main() {
-    let app_state = Arc::new(Mutex::new(AppState {
-        jobs: HashMap::new(),
-        index: BinaryHeap::new(),
-    }));
+    let app_state = Arc::new(AppState {
+        jobs: Mutex::new(HashMap::new()),
+        index: Mutex::new(BinaryHeap::new()),
+        notify: Notify::new(),
+    });
 
     for _ in 0..2 {
         let state = app_state.clone();
@@ -61,13 +62,13 @@ async fn health_check() -> ApiResponse {
 
 async fn get_jobs(
     Path(job_id): Path<String>,
-    State(app): State<Arc<Mutex<AppState>>>,
+    State(app): State<Arc<AppState>>,
 ) -> Result<ApiResponse, ApiError> {
     let id = Uuid::from_str(&job_id)?;
 
     let job = {
-        let state = app.lock().await;
-        state.jobs.get(&id).cloned()
+        let jobs = app.jobs.lock().await;
+        jobs.get(&id).cloned()
     };
 
     match job {
@@ -77,7 +78,7 @@ async fn get_jobs(
 }
 
 async fn post_job(
-    State(app): State<Arc<Mutex<AppState>>>,
+    State(app): State<Arc<AppState>>,
     Json(data): Json<PostJob>,
 ) -> Result<ApiResponse, ApiError> {
     let id = Uuid::new_v4();
@@ -87,8 +88,9 @@ async fn post_job(
     if data.max_attempts > MAX_ATTEMPTS {
         Err(ApiError::InvalidArgument)
     } else {
-        let mut app_state = app.lock().await;
-        app_state.jobs.insert(
+        let mut index = app.index.lock().await;
+        let mut jobs = app.jobs.lock().await;
+        jobs.insert(
             id,
             Job {
                 job_id: id,
@@ -102,7 +104,7 @@ async fn post_job(
             },
         );
 
-        app_state.index.push(Reverse(Index {
+        index.push(Reverse(Index {
             run_at: current_time,
             uuid: id,
         }));
@@ -112,11 +114,11 @@ async fn post_job(
 
 async fn cancel_job(
     Path(job_id): Path<String>,
-    State(app): State<Arc<Mutex<AppState>>>,
+    State(app): State<Arc<AppState>>,
 ) -> Result<ApiResponse, ApiError> {
     let id = Uuid::from_str(&job_id)?;
-    let mut app_state = app.lock().await;
-    let job = app_state.jobs.get_mut(&id);
+    let mut jobs = app.jobs.lock().await;
+    let job = jobs.get_mut(&id);
     match job {
         Some(job) => match job.state {
             JobState::Queued => {

@@ -1,73 +1,69 @@
 use chrono::{self, Utc};
 use std::{cmp::Reverse, sync::Arc, time::Duration};
-use tokio::{sync::Mutex, time::sleep};
+use tokio::time::sleep;
 use uuid::Uuid;
 
 use crate::{state::AppState, types::JobState};
 
-pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
+pub async fn worker_loop(state: Arc<AppState>) {
     loop {
         let now = Utc::now().timestamp();
-        // get the job id that needs to be runninng
+
         let job_id: Option<Uuid> = {
-            let mut app = state.lock().await;
-            // find a job that is currently QUEUED and from the top of the queue
-            if let Some(index) = app.index.peek() {
-                let uuid = index.0.uuid;
-                let run_at = index.0.run_at;
-                if let Some(job) = app.jobs.get_mut(&uuid) {
+            let mut index = state.index.lock().await;
+
+            if let Some(index_item) = index.peek() {
+                let uuid = index_item.0.uuid;
+                let run_at = index_item.0.run_at;
+                let mut jobs = state.jobs.lock().await;
+                if let Some(job) = jobs.get_mut(&uuid) {
                     if job.run_at <= now && job.state == JobState::Queued && job.run_at == run_at {
                         job.state = JobState::Running;
                         job.attempts += 1;
-                        app.index.pop();
-                        drop(app);
+                        index.pop();
                         Some(uuid)
                     } else if job.run_at != run_at {
-                        app.index.pop();
-                        drop(app);
+                        index.pop();
                         None
                     } else {
                         let run_at = job.run_at;
-                        drop(app);
+                        drop(index);
+                        drop(jobs);
                         if run_at > now {
                             sleep(Duration::from_secs((run_at - now) as u64)).await;
                         }
                         None
                     }
                 } else {
-                    app.index.pop();
+                    index.pop();
                     None
                 }
             } else {
                 None
             }
         };
-        // run the job
+
         if let Some(id) = job_id {
             println!("Processing the job with jobID: {}", id);
 
-            // Simulation
             sleep(Duration::from_secs(2)).await;
 
-            // acquire lock
             let now = Utc::now().timestamp();
-            let mut app = state.lock().await;
-            if let Some(job) = app.jobs.get_mut(&id) {
+            let mut index = state.index.lock().await;
+            let mut jobs = state.jobs.lock().await;
+            if let Some(job) = jobs.get_mut(&id) {
                 let choice: u8 = rand::random();
-                // Randomly change the job state
+
                 if choice.is_multiple_of(2) {
                     println!("job witrh jobId: {} failed ", job.job_id);
-                    // this mean the simulation is failed
+
                     if job.attempts < job.max_attempts {
                         job.state = JobState::Queued;
-                        // add a exponential delay so that it wont run repeatedly
-                        // add random jitter also to solve THUNDERING HERD PROBLEM
                         let delay = job.retry_policy.next_delay(job.attempts);
                         job.run_at = now + delay;
                         let run = job.run_at;
                         let uuid = job.job_id;
-                        app.index
-                            .push(Reverse(crate::types::Index { run_at: run, uuid }));
+                        index.push(Reverse(crate::types::Index { run_at: run, uuid }));
                     } else {
                         job.state = JobState::Dead;
                     }
@@ -76,9 +72,6 @@ pub async fn worker_loop(state: Arc<Mutex<AppState>>) {
                     job.state = JobState::Succeeded
                 }
             }
-        } else {
-            // if there is no job is running currently
-            sleep(Duration::from_millis(500)).await
         }
     }
 }
