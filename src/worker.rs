@@ -1,6 +1,6 @@
 use chrono::{self, Utc};
 use std::{cmp::Reverse, sync::Arc, time::Duration};
-use tokio::time::sleep;
+use tokio::{select, time::sleep};
 use uuid::Uuid;
 
 use crate::{state::AppState, types::JobState};
@@ -30,7 +30,10 @@ pub async fn worker_loop(state: Arc<AppState>) {
                         drop(index);
                         drop(jobs);
                         if run_at > now {
-                            sleep(Duration::from_secs((run_at - now) as u64)).await;
+                            select! {
+                                _ = state.notify.notified() => {},
+                                _ = sleep(Duration::from_secs((run_at - now) as u64)) => {}
+                            }
                         }
                         None
                     }
@@ -38,7 +41,8 @@ pub async fn worker_loop(state: Arc<AppState>) {
                     index.pop();
                     None
                 }
-            } else {
+            }
+             else {
                 None
             }
         };
@@ -49,7 +53,6 @@ pub async fn worker_loop(state: Arc<AppState>) {
             sleep(Duration::from_secs(2)).await;
 
             let now = Utc::now().timestamp();
-            let mut index = state.index.lock().await;
             let mut jobs = state.jobs.lock().await;
             if let Some(job) = jobs.get_mut(&id) {
                 let choice: u8 = rand::random();
@@ -63,6 +66,8 @@ pub async fn worker_loop(state: Arc<AppState>) {
                         job.run_at = now + delay;
                         let run = job.run_at;
                         let uuid = job.job_id;
+                        drop(jobs);
+                        let mut index = state.index.lock().await;
                         index.push(Reverse(crate::types::Index { run_at: run, uuid }));
                     } else {
                         job.state = JobState::Dead;
@@ -72,6 +77,9 @@ pub async fn worker_loop(state: Arc<AppState>) {
                     job.state = JobState::Succeeded
                 }
             }
+        }
+        else {
+            state.notify.notified().await;
         }
     }
 }

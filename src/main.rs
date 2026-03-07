@@ -88,26 +88,29 @@ async fn post_job(
     if data.max_attempts > MAX_ATTEMPTS {
         Err(ApiError::InvalidArgument)
     } else {
-        let mut index = app.index.lock().await;
-        let mut jobs = app.jobs.lock().await;
-        jobs.insert(
-            id,
-            Job {
-                job_id: id,
-                job_type: data.job_type,
-                payload: data.payload,
-                state: JobState::Queued,
-                attempts: 0,
-                max_attempts: data.max_attempts,
-                run_at: current_time,
-                retry_policy: data.retry_policy,
-            },
-        );
+        {
+            let mut index = app.index.lock().await;
+            let mut jobs = app.jobs.lock().await;
+            jobs.insert(
+                id,
+                Job {
+                    job_id: id,
+                    job_type: data.job_type,
+                    payload: data.payload,
+                    state: JobState::Queued,
+                    attempts: 0,
+                    max_attempts: data.max_attempts,
+                    run_at: current_time,
+                    retry_policy: data.retry_policy,
+                },
+            );
 
-        index.push(Reverse(Index {
-            run_at: current_time,
-            uuid: id,
-        }));
+            index.push(Reverse(Index {
+                run_at: current_time,
+                uuid: id,
+            }));
+        }
+        app.notify.notify_one();
         Ok(ApiResponse::Created(id.to_string()))
     }
 }
