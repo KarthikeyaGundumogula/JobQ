@@ -28,6 +28,7 @@ use crate::{constants::MAX_ATTEMPTS, types::Index};
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
     let app_state = Arc::new(AppState {
         jobs: Mutex::new(HashMap::new()),
         index: Mutex::new(BinaryHeap::new()),
