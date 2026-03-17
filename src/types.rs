@@ -54,6 +54,8 @@ pub struct Job {
     pub max_attempts: i16,
     pub run_at: chrono::DateTime<chrono::Utc>,
     pub retry_policy: serde_json::Value,
+    pub locked_by: Option<Uuid>,
+    pub lease_expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[derive(sqlx::Type, Serialize, Clone, PartialEq, Debug)]
