@@ -1,85 +1,115 @@
-use chrono::{self, Utc};
-use std::{cmp::Reverse, sync::Arc, time::Duration};
+use chrono::{self, DateTime, Utc};
+use std::{sync::Arc, time::Duration};
 use tokio::{select, time::sleep};
-use uuid::Uuid;
 
-use crate::{state::AppState, types::JobState};
+use crate::{
+    db,
+    state::AppState,
+    types::{Job, JobState, RetryPolicyConfig},
+};
 
 pub async fn worker_loop(state: Arc<AppState>) {
     loop {
-        let now = Utc::now().timestamp();
-
-        let job_id: Option<Uuid> = {
-            let mut index = state.index.lock().await;
-
-            if let Some(index_item) = index.peek() {
-                let uuid = index_item.0.uuid;
-                let run_at = index_item.0.run_at;
-                let mut jobs = state.jobs.lock().await;
-                if let Some(job) = jobs.get_mut(&uuid) {
-                    if job.run_at <= now && job.state == JobState::Queued && job.run_at == run_at {
-                        job.state = JobState::Running;
-                        job.attempts += 1;
-                        index.pop();
-                        Some(uuid)
-                    } else if job.run_at != run_at {
-                        index.pop();
-                        None
-                    } else {
+        //-- Infinitely running worker loop --//
+        // 1. get the most recent job
+        // | -- Exists change the state to running
+        // | -- not exists still get the job with nearest exeecution time and put a select! on notify and remaining duration for the top task to run
+        let job: Option<Job> = {
+            let db_res = db::claim_or_peek_job(&state.pool).await;
+            match db_res {
+                Ok(res) => match res {
+                    Some(job) => {
                         let run_at = job.run_at;
-                        drop(index);
-                        drop(jobs);
+                        let now = Utc::now();
                         if run_at > now {
                             select! {
                                 _ = state.notify.notified() => {},
-                                _ = sleep(Duration::from_secs((run_at - now) as u64)) => {}
-                            }
+                                _ = sleep(Duration::from_secs((run_at.timestamp()-now.timestamp() ) as u64)) => {}
+                            };
+                            None
+                        } else {
+                            Some(job)
                         }
-                        None
                     }
-                } else {
-                    index.pop();
+                    None => None,
+                },
+                Err(e) => {
+                    eprintln!("worker loop failed at db query, {}", e);
+                    sleep(Duration::from_secs(2)).await;
                     None
                 }
             }
-             else {
-                None
-            }
         };
 
-        if let Some(id) = job_id {
-            println!("Processing the job with jobID: {}", id);
+        if let Some(job) = job {
+            println!("Processing the job with jobID: {}", job.job_id);
 
             sleep(Duration::from_secs(2)).await;
 
             let now = Utc::now().timestamp();
-            let mut jobs = state.jobs.lock().await;
-            if let Some(job) = jobs.get_mut(&id) {
-                let choice: u8 = rand::random();
+            let choice: u8 = rand::random();
 
-                if choice.is_multiple_of(2) {
-                    println!("job witrh jobId: {} failed ", job.job_id);
+            if choice.is_multiple_of(2) {
+                println!("job witrh jobId: {} failed ", job.job_id);
+                log_if_err(
+                    db::update_job_status_by_id(
+                        &state.pool,
+                        job.job_id,
+                        JobState::Failed,
+                        JobState::Running,
+                    )
+                    .await,
+                    "unable to update job status to failed",
+                );
 
-                    if job.attempts < job.max_attempts {
-                        job.state = JobState::Queued;
-                        let delay = job.retry_policy.next_delay(job.attempts);
-                        job.run_at = now + delay;
-                        let run = job.run_at;
-                        let uuid = job.job_id;
-                        drop(jobs);
-                        let mut index = state.index.lock().await;
-                        index.push(Reverse(crate::types::Index { run_at: run, uuid }));
-                    } else {
-                        job.state = JobState::Dead;
-                    }
+                if job.attempts < job.max_attempts {
+                    let retry_policy = match RetryPolicyConfig::try_from(job.retry_policy.clone()) {
+                        Ok(p) => p,
+                        Err(_) => {
+                            eprintln!("unable to parse the retry policy");
+                            continue;
+                        }
+                    };
+                    let delay = retry_policy.next_delay(job.attempts);
+                    let new_run_at =
+                        DateTime::from_timestamp_secs(delay + now).unwrap_or_else(Utc::now);
+
+                    log_if_err(
+                        db::update_job_for_retry_by_id(&state.pool, job.job_id, new_run_at).await,
+                        "unable to update job for retry",
+                    );
                 } else {
-                    println!("job witrh jobId: {} succeeded", job.job_id);
-                    job.state = JobState::Succeeded
+                    log_if_err(
+                        db::update_job_status_by_id(
+                            &state.pool,
+                            job.job_id,
+                            JobState::Dead,
+                            JobState::Failed,
+                        )
+                        .await,
+                        "unable to update job status to Dead",
+                    );
                 }
+            } else {
+                log_if_err(
+                    db::update_job_status_by_id(
+                        &state.pool,
+                        job.job_id,
+                        JobState::Succeeded,
+                        JobState::Running,
+                    )
+                    .await,
+                    "unable to update jub status to succeeded",
+                );
             }
-        }
-        else {
+        } else {
             state.notify.notified().await;
         }
+    }
+}
+
+fn log_if_err<T>(result: Result<T, impl std::fmt::Debug>, context: &str) {
+    if let Err(e) = result {
+        eprintln!("[worker] {}: {:?}", context, e);
     }
 }

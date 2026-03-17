@@ -1,1 +1,1 @@
-pub const MAX_ATTEMPTS: u32 = 6;
+pub const MAX_ATTEMPTS: i16 = 6;

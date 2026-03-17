@@ -13,7 +13,7 @@ pub enum RetryPolicyConfig {
 }
 
 impl RetryPolicyConfig {
-    pub fn next_delay(&self, attempts: u32) -> i64 {
+    pub fn next_delay(&self, attempts: i16) -> i64 {
         match self {
             Self::Exponential { base, max_delay } => ExponentialBackoff {
                 base: *base,
@@ -29,38 +29,40 @@ impl RetryPolicyConfig {
     }
 }
 
+impl TryFrom<serde_json::Value> for RetryPolicyConfig {
+    type Error = serde_json::Error;
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        serde_json::from_value(value)
+    }
+}
+
 #[derive(Deserialize)]
 pub struct PostJob {
     pub job_type: String,
     pub payload: Value,
-    pub max_attempts: u32,
+    pub max_attempts: i16,
     pub retry_policy: RetryPolicyConfig,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(sqlx::FromRow, Serialize, Clone)]
 pub struct Job {
     pub job_id: Uuid,
     pub job_type: String,
     pub payload: serde_json::Value,
     pub state: JobState,
-    pub attempts: u32,
-    pub max_attempts: u32,
-    pub run_at: i64,
-    pub retry_policy: RetryPolicyConfig,
+    pub attempts: i16,
+    pub max_attempts: i16,
+    pub run_at: chrono::DateTime<chrono::Utc>,
+    pub retry_policy: serde_json::Value,
 }
 
-#[derive(PartialEq, PartialOrd, Eq, Ord)]
-pub struct Index {
-    pub run_at: i64,
-    pub uuid: Uuid,
-}
-
-#[derive(Serialize, Clone, PartialEq, Debug)]
+#[derive(sqlx::Type, Serialize, Clone, PartialEq, Debug)]
+#[sqlx(type_name = "job_state", rename_all = "PascalCase")]
 pub enum JobState {
     Queued,
     Running,
     Succeeded,
-    // Failed,
+    Failed,
     Dead,
     Cancelled,
 }
@@ -71,7 +73,7 @@ impl std::fmt::Display for JobState {
             JobState::Queued => write!(f, "Queued"),
             JobState::Running => write!(f, "Running"),
             JobState::Succeeded => write!(f, "Succeeded"),
-            // JobState::Failed => write!(f, "Failed"),
+            JobState::Failed => write!(f, "Failed"),
             JobState::Dead => write!(f, "Dead"),
             JobState::Cancelled => write!(f, "Cancelled"),
         }

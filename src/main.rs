@@ -3,17 +3,13 @@ use axum::{
     extract::{Path, State},
     routing::{get, post},
 };
-use chrono::Utc;
-use std::{
-    cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
-    str::FromStr,
-    sync::Arc,
-};
-use tokio::sync::{Mutex, Notify};
+use sqlx::postgres::PgPoolOptions;
+use std::{str::FromStr, sync::Arc};
+use tokio::sync::Notify;
 use uuid::{self, Uuid};
 
 mod constants;
+mod db;
 mod errors;
 mod retry;
 mod state;
@@ -22,16 +18,22 @@ mod worker;
 
 use errors::ApiError;
 use state::AppState;
-use types::{ApiResponse, Job, JobState, PostJob};
+use types::{ApiResponse, JobState, PostJob};
 
-use crate::{constants::MAX_ATTEMPTS, types::Index};
+use crate::constants::MAX_ATTEMPTS;
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+    let db_url = std::env::var("DATABASE_URL").expect("database url must be set");
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&db_url)
+        .await
+        .expect("failed to connect to the database");
     let app_state = Arc::new(AppState {
-        jobs: Mutex::new(HashMap::new()),
-        index: Mutex::new(BinaryHeap::new()),
         notify: Notify::new(),
+        pool,
     });
 
     for _ in 0..2 {
@@ -41,9 +43,9 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(health_check))
-        .route("/get/{job_id}", get(get_jobs))
-        .route("/post", post(post_job))
-        .route("/cancel/{job_id}", post(cancel_job))
+        .route("/jobs", post(post_job))
+        .route("/jobs/{job_id}", get(get_jobs))
+        .route("/jobs/{job_id}/cancel", post(cancel_job))
         .with_state(app_state);
 
     let listner = tokio::net::TcpListener::bind("127.0.0.1:8484")
@@ -66,11 +68,7 @@ async fn get_jobs(
 ) -> Result<ApiResponse, ApiError> {
     let id = Uuid::from_str(&job_id)?;
 
-    let job = {
-        let jobs = app.jobs.lock().await;
-        jobs.get(&id).cloned()
-    };
-
+    let job = db::get_job_by_id(&app.pool, id).await?;
     match job {
         Some(job) => Ok(ApiResponse::JobData(job)),
         None => Err(ApiError::NotFound),
@@ -82,34 +80,10 @@ async fn post_job(
     Json(data): Json<PostJob>,
 ) -> Result<ApiResponse, ApiError> {
     let id = Uuid::new_v4();
-
-    let current_time = Utc::now().timestamp();
-
     if data.max_attempts > MAX_ATTEMPTS {
         Err(ApiError::InvalidArgument)
     } else {
-        {
-            let mut index = app.index.lock().await;
-            let mut jobs = app.jobs.lock().await;
-            jobs.insert(
-                id,
-                Job {
-                    job_id: id,
-                    job_type: data.job_type,
-                    payload: data.payload,
-                    state: JobState::Queued,
-                    attempts: 0,
-                    max_attempts: data.max_attempts,
-                    run_at: current_time,
-                    retry_policy: data.retry_policy,
-                },
-            );
-
-            index.push(Reverse(Index {
-                run_at: current_time,
-                uuid: id,
-            }));
-        }
+        let id = db::create_job(&app.pool, &data, id).await?;
         app.notify.notify_one();
         Ok(ApiResponse::Created(id.to_string()))
     }
@@ -120,18 +94,16 @@ async fn cancel_job(
     State(app): State<Arc<AppState>>,
 ) -> Result<ApiResponse, ApiError> {
     let id = Uuid::from_str(&job_id)?;
-    let mut jobs = app.jobs.lock().await;
-    let job = jobs.get_mut(&id);
+    let job =
+        db::update_job_status_by_id(&app.pool, id, JobState::Cancelled, JobState::Queued).await?;
     match job {
-        Some(job) => match job.state {
-            JobState::Queued => {
-                job.state = JobState::Cancelled;
-                Ok(ApiResponse::JobData(job.clone()))
+        Some(job) => Ok(ApiResponse::JobData(job.clone())),
+        None => {
+            let job = db::get_job_by_id(&app.pool, id).await?;
+            match job {
+                Some(job) => Err(ApiError::Conflict { reason: job.state }),
+                None => Err(ApiError::NotFound),
             }
-            _ => Err(ApiError::Conflict {
-                reason: job.state.clone(),
-            }),
-        },
-        _ => Err(ApiError::NotFound),
+        }
     }
 }

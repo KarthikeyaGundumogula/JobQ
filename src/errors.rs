@@ -31,6 +31,10 @@ pub enum ApiError {
     InvalidArgument,
     #[error("job can't be cancelled at the current state: {reason}")]
     Conflict { reason: JobState },
+    #[error("Postgres Error")]
+    Database(#[from] sqlx::Error),
+    #[error("Serailization error")]
+    Serialization(#[from] serde_json::Error),
 }
 
 impl IntoResponse for ApiError {
@@ -66,6 +70,22 @@ impl IntoResponse for ApiError {
             Self::Conflict { reason: _ } => (
                 StatusCode::CONFLICT,
                 Json(ErrorResponse::new(message, StatusCode::CONFLICT)),
+            )
+                .into_response(),
+            Self::Database(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    message,
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )),
+            )
+                .into_response(),
+            Self::Serialization(_) => (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "unable to serailize".to_string(),
+                    StatusCode::BAD_REQUEST,
+                )),
             )
                 .into_response(),
         }
