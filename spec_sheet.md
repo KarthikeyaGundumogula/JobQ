@@ -67,11 +67,11 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 ## 2.1 Database Integration
 
-* [ ] Add `sqlx`
-* [ ] Connection pool configuration
-* [ ] Migrations setup
-* [ ] Jobs table schema
-* [ ] Index `(state, run_at)`
+* [x] Add `sqlx`
+* [x] Connection pool configuration
+* [x] Migrations setup
+* [x] Jobs table schema
+* [x] Index `(state, run_at)`
 * [ ] Index on `lease_expires_at`
 
 ---
@@ -88,10 +88,10 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 ## 2.3 Retry + Persistence
 
-* [ ] Persist `attempts`
-* [ ] Persist updated `run_at`
-* [ ] Persist dead state
-* [ ] Atomic state updates
+* [x] Persist `attempts`
+* [x] Persist updated `run_at`
+* [x] Persist dead state
+* [x] Atomic state updates
 
 ---
 
@@ -135,10 +135,10 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 ## 3.4 Cancel Endpoint
 
-* [ ] State-aware cancel validation
-* [ ] Cancel queued jobs
-* [ ] Best-effort cancel running jobs
-* [ ] Prevent illegal transitions
+* [x] State-aware cancel validation
+* [x] Cancel queued jobs
+* [x] Best-effort cancel running jobs
+* [x] Prevent illegal transitions
 
 ---
 

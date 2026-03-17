@@ -1,7 +1,6 @@
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx;
 use uuid::Uuid;
 
 use crate::retry::{ExponentialBackoff, LinearBackoff, RetryPolicy};
@@ -14,7 +13,7 @@ pub enum RetryPolicyConfig {
 }
 
 impl RetryPolicyConfig {
-    pub fn next_delay(&self, attempts: u32) -> i64 {
+    pub fn next_delay(&self, attempts: i16) -> i64 {
         match self {
             Self::Exponential { base, max_delay } => ExponentialBackoff {
                 base: *base,
@@ -27,6 +26,13 @@ impl RetryPolicyConfig {
             }
             .next_delay(attempts),
         }
+    }
+}
+
+impl TryFrom<serde_json::Value> for RetryPolicyConfig {
+    type Error = serde_json::Error;
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        serde_json::from_value(value)
     }
 }
 
@@ -50,7 +56,7 @@ pub struct Job {
     pub retry_policy: serde_json::Value,
 }
 
-#[derive(sqlx::Type,Serialize, Clone, PartialEq, Debug)]
+#[derive(sqlx::Type, Serialize, Clone, PartialEq, Debug)]
 #[sqlx(type_name = "job_state", rename_all = "PascalCase")]
 pub enum JobState {
     Queued,

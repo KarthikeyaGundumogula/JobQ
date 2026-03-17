@@ -6,7 +6,7 @@ CREATE TYPE job_state AS ENUM (
   'Failed',
   'Dead',
   'Cancelled'
-)q
+);
 
 CREATE TABLE
   jobq (

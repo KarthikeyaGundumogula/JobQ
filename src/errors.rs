@@ -82,7 +82,10 @@ impl IntoResponse for ApiError {
                 .into_response(),
             Self::Serialization(_) => (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new("unable to serailize".to_string(), StatusCode::BAD_REQUEST)),
+                Json(ErrorResponse::new(
+                    "unable to serailize".to_string(),
+                    StatusCode::BAD_REQUEST,
+                )),
             )
                 .into_response(),
         }
