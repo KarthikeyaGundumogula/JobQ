@@ -38,7 +38,13 @@ async fn main() {
 
     for _ in 0..2 {
         let state = app_state.clone();
-        tokio::spawn(async move { worker::worker_loop(state).await });
+        let worker_id = Uuid::new_v4();
+        tokio::spawn(async move { worker::worker_loop(state,worker_id).await });
+    }
+
+    {
+        let state = app_state.clone();
+        tokio::spawn(async move { worker::requeue_worker(state).await});
     }
 
     let app = Router::new()
