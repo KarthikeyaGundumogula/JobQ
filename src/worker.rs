@@ -90,6 +90,7 @@ pub async fn worker_loop(state: Arc<AppState>, worker_id: Uuid) {
                     );
                 }
             } else {
+                println!("Job with job_id {} is succeeded",job.job_id);
                 log_if_err(
                     db::update_job_status_by_id(
                         &state.pool,
@@ -107,12 +108,24 @@ pub async fn worker_loop(state: Arc<AppState>, worker_id: Uuid) {
     }
 }
 
-fn log_if_err<T>(result: Result<T, impl std::fmt::Debug>, context: &str) {
-    if let Err(e) = result {
-        eprintln!("[worker] {}: {:?}", context, e);
+pub async fn requeue_worker(state: Arc<AppState>) {
+    loop {
+        sleep(Duration::from_secs(30)).await;
+        let requeued = log_if_err(db::job_requeue(&state.pool).await, "job re_queueing failed");
+        if let Some(jobs) = requeued {
+            if jobs > 0 {
+                state.notify.notify_waiters();
+            }
+        }
     }
 }
 
-pub async fn requeue_worker(state: Arc<AppState>) {
-
+fn log_if_err<T>(result: Result<T, impl std::fmt::Debug>, context: &str) -> Option<T> {
+    match result {
+        Ok(val) => Some(val),
+        Err(e) => {
+            eprintln!("[worker] {}: {:?}", context, e);
+            None
+        }
+    }
 }

@@ -273,3 +273,15 @@ http://localhost:8484
 ```
 
 ---
+
+## Example Job Creation
+
+```bash
+curl -X POST http://127.0.0.1:8484/jobs -H 'Content-Type: application/json' -d '{"job_type":"email","payload":"fuck you canada","max_attempts":5,"retry_policy":{"type":"Exponential","base":8,"max_delay":10}}'
+```
+
+## Example Job Retrieval
+
+```bash
+curl -X GET http://127.0.0.1:8484/jobs/1a0d885c-57e3-4ab9-aaf3-3a983e716f7c
+```

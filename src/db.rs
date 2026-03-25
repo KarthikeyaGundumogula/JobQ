@@ -38,7 +38,7 @@ pub async fn update_job_status_by_id(
 ) -> Result<Option<Job>, ApiError> {
     Ok(sqlx::query_as!(
       Job,
-        r#"UPDATE jobq SET state = $1 WHERE job_id = $2 AND state = $3 RETURNING job_id, job_type, payload, state AS "state: JobState", attempts, max_attempts, run_at, retry_policy, locked_by, lease_expires_at"#,
+        r#"UPDATE jobq SET state = $1, locked_by = NULL, lease_expires_at = NULL WHERE job_id = $2 AND state = $3 RETURNING job_id, job_type, payload, state AS "state: JobState", attempts, max_attempts, run_at, retry_policy, locked_by, lease_expires_at"#,
         new_state as JobState,
         id,
         required_state as JobState
@@ -51,16 +51,16 @@ pub async fn update_job_for_retry_by_id(
     pool: &PgPool,
     id: Uuid,
     new_run_at: chrono::DateTime<chrono::Utc>,
-) -> Result<Job, ApiError> {
-    Ok(
-        sqlx::query_as!(
-            Job,
-            r#"UPDATE jobq SET state = $1, run_at = $2 WHERE job_id = $3 RETURNING job_id, job_type, payload, state AS "state: JobState", attempts, max_attempts, run_at, retry_policy, locked_by, lease_expires_at"#,
-            JobState::Queued as JobState,
-            new_run_at,
-            id
-        ).fetch_one(pool).await?
+) -> Result<u64, ApiError> {
+    Ok(sqlx::query!(
+        r#"UPDATE jobq SET state = $1, run_at = $2 WHERE job_id = $3"#,
+        JobState::Queued as JobState,
+        new_run_at,
+        id
     )
+    .execute(pool)
+    .await?
+    .rows_affected())
 }
 
 pub async fn claim_or_peek_job(
@@ -97,4 +97,16 @@ sqlx::query_as!(
     };
     tx.commit().await?;
     Ok(job)
+}
+
+pub async fn job_requeue(pool: &PgPool) -> Result<u64, ApiError> {
+    Ok(
+        sqlx::query!(
+            "
+            UPDATE jobq SET state = $1, lease_expires_at = NULL, locked_by = NULL WHERE lease_expires_at < NOW() AND state = $2
+            ",
+            JobState::Queued as JobState,
+            JobState::Running as JobState,
+        ).execute(pool).await?.rows_affected()
+    )
 }

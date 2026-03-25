@@ -72,17 +72,17 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 * [x] Migrations setup
 * [x] Jobs table schema
 * [x] Index `(state, run_at)`
-* [ ] Index on `lease_expires_at`
+* [x] Index on `lease_expires_at`
 
 ---
 
 ## 2.2 Job Claiming via DB
 
-* [ ] Implement `FOR UPDATE SKIP LOCKED`
-* [ ] Transaction-based claim
-* [ ] Update state to `running`
-* [ ] Set `lease_expires_at`
-* [ ] Commit before execution
+* [x] Implement `FOR UPDATE SKIP LOCKED`
+* [x] Transaction-based claim
+* [x] Update state to `running`
+* [x] Set `lease_expires_at`
+* [x] Commit before execution
 
 ---
 
@@ -97,9 +97,9 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 ## 2.4 Lease Recovery
 
-* [ ] On startup: reclaim expired leases
-* [ ] Periodic expired lease requeue
-* [ ] Test crash scenario manually
+* [x] On startup: reclaim expired leases
+* [x] Periodic expired lease requeue
+* [x] Test crash scenario manually
 
 ---
 
@@ -107,11 +107,11 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 ## 3.1 Leasing Model
 
-* [ ] Worker ID generation
-* [ ] `locked_by` column
-* [ ] Lease duration config
-* [ ] Reclaim query
-* [ ] Prevent double execution
+* [x] Worker ID generation
+* [x] `locked_by` column
+* [x] Lease duration config
+* [x] Reclaim query
+* [x] Prevent double execution
 
 ---
 
@@ -146,11 +146,11 @@ Build a crash-resilient, PostgreSQL-backed background job processor in Rust with
 
 ## 4.1 RetryPolicy Trait
 
-* [ ] Define trait
-* [ ] ExponentialBackoff struct
-* [ ] LinearBackoff struct
-* [ ] Inject policy into worker config
-* [ ] Remove hardcoded delay logic
+* [x] Define trait
+* [x] ExponentialBackoff struct
+* [x] LinearBackoff struct
+* [x] Inject policy into worker config
+* [x] Remove hardcoded delay logic
 
 ---
 
@@ -221,7 +221,7 @@ When complete, system should provide:
 
 # Estimated Timeline (Realistic)
 
-Phase 2 (DB + Leasing): 2–3 weeks
+Phase 2 (DB + Leasing): 2–3 weeks (Completed in 3 days)
 Phase 3 (Reliability polish): 1–2 weeks
 Phase 4–5 (Abstraction + Metrics): 1 week
 Phase 6–7 (Hardening): 1 week
